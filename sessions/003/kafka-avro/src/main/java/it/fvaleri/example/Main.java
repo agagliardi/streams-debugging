@@ -3,10 +3,10 @@ package it.fvaleri.example;
 import io.apicurio.registry.rest.client.RegistryClient;
 import io.apicurio.registry.rest.client.RegistryClientFactory;
 import io.apicurio.registry.rest.client.exception.NotFoundException;
-import io.apicurio.registry.rest.v2.beans.IfExists;
 import io.apicurio.registry.serde.SerdeConfig;
 import io.apicurio.registry.serde.avro.AvroKafkaDeserializer;
 import io.apicurio.registry.serde.avro.AvroKafkaSerializer;
+import io.apicurio.registry.serde.strategy.TopicIdStrategy;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -56,7 +56,7 @@ public class Main {
 
     public static void main(String[] args) {
         try (var producer = new KafkaProducer<String, GenericRecord>(producerConfig());
-             var consumer = new KafkaConsumer<Long, GenericRecord>(consumerConfig())) {
+             var consumer = new KafkaConsumer<String, GenericRecord>(consumerConfig())) {
 
             // get the schema by group and id
             RegistryClient client = RegistryClientFactory.create(registryUrl);
@@ -84,7 +84,7 @@ public class Main {
             consumer.subscribe(Collections.singletonList(TOPIC_NAME));
             while (true) {
                 // the globalId is sent with the payload and used to lookup the schema
-                ConsumerRecords<Long, GenericRecord> records = consumer.poll(Duration.ofSeconds(5));
+                ConsumerRecords<String, GenericRecord> records = consumer.poll(Duration.ofSeconds(5));
                 records.forEach(record -> {
                     GenericRecord value = record.value();
                     System.out.printf("Record: %s-%d%n", value.get("Message"), value.get("Time"));
@@ -109,10 +109,12 @@ public class Main {
         // use Avro Serializer
         props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, AvroKafkaSerializer.class.getName());
 
-        // set Service Registry URL
+        // set registry URL
         props.put(SerdeConfig.REGISTRY_URL, registryUrl);
-        props.put(SerdeConfig.AUTO_REGISTER_ARTIFACT, Boolean.TRUE);
-        props.put(SerdeConfig.AUTO_REGISTER_ARTIFACT_IF_EXISTS, IfExists.RETURN.name());
+        // set cache eviction period
+        props.putIfAbsent(SerdeConfig.CHECK_PERIOD_MS, 30_000);
+        // set the artifactId lookup strategy (map the topic name to the artifactId in the registry)
+        props.putIfAbsent(SerdeConfig.ARTIFACT_RESOLVER_STRATEGY, TopicIdStrategy.class.getName());
 
         addSharedConfig(props);
         return props;
@@ -130,10 +132,12 @@ public class Main {
         // use Avro Deserializer
         props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, AvroKafkaDeserializer.class.getName());
 
-        // set Service Registry URL
+        // set registry URL
         props.put(SerdeConfig.REGISTRY_URL, registryUrl);
-        props.put(SerdeConfig.AUTO_REGISTER_ARTIFACT, Boolean.TRUE);
-        props.put(SerdeConfig.AUTO_REGISTER_ARTIFACT_IF_EXISTS, IfExists.RETURN.name());
+        // set cache eviction period
+        props.putIfAbsent(SerdeConfig.CHECK_PERIOD_MS, 30_000);
+        // set the artifactId lookup strategy (map the topic name to the artifactId in the registry)
+        props.putIfAbsent(SerdeConfig.ARTIFACT_RESOLVER_STRATEGY, TopicIdStrategy.class.getName());
 
         addSharedConfig(props);
         return props;
